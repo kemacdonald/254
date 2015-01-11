@@ -1,2 +1,2 @@
 # 254
-coursework for 254: experimental methods
+Files and project for 254: experimental methods
