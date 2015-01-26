@@ -1,2 +1,2 @@
-# 254
-Files and project for 254: experimental methods
+# psych254_materials
+Materials for Psych 254
