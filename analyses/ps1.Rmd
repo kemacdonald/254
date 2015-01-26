@@ -1,6 +1,6 @@
 ---
 title: 'Psych 254 W15 PS #1'
-author: "Mike Frank"
+author: "Kyle MacDonald"
 date: "January 11, 2015"
 output: html_document
 ---
@@ -41,6 +41,9 @@ HINT: try computing some summary statistics for the different items. Also, are t
 
 Fix the data file so that it looks reasonable.
 
+Solution: Open data in excel to do visual check of the data. 
+
+After fixing big errors in excel, we can set up the data file how we want: set variables to the appropriate type and remove duplicate participants
 
 
 Part 2: Making these data tidy
@@ -59,9 +62,8 @@ To make this data tidy, we'll do some cleanup. First, remove the columns you don
 HINT: `?select` and the examples of helper functions will help you be efficient.
 
 ```{r select}
-d.tidy <- select(...)
+d.tidy <- select(d, WorkerId, Input.condition:Answer.sushi_cost)
 ```
-
 
 Try renaming some variables using `rename`. A good naming scheme is:
 
@@ -72,23 +74,40 @@ Try renaming some variables using `rename`. A good naming scheme is:
 Try using the `%>%` operator as well. So you will be "piping" `d %>% rename(...)`.
 
 ```{r rename}
-d.tidy <- ...
-```
+# clean up remove . and replace with _
+names(d.tidy) <- gsub("(\\.)", "_", names(d.tidy))
+# all lowercase
+names(d.tidy) <- tolower(names(d.tidy))
 
+# rename specific variables
+d.tidy <- d.tidy %>%
+    rename(id = workerid,
+           condition = input_condition
+           )
+```
 
 OK, now for the tricky part. Use the verb *gather* to turn this into a *tidy* data frame.
 
 HINT: look for online examples!
 
 ```{r gather}
-d.tidy <- ...
-```
+d.tidy.response <- d.tidy %>%
+    gather(item, response, answer_dog_cost:answer_sushi_cost) %>%
+    select(id, condition, item, response) %>%
+    arrange(id)
 
+d.tidy.input <- d.tidy %>%
+    gather(input_price_cond, input_price, input_price1:input_price3) %>%
+    arrange(id) %>%
+    select(input_price_cond, input_price)
+   
+# bind data frames together 
+d.tidy.final <- bind_cols(d.tidy.response, d.tidy.input)
+```
 
 Bonus problem: *spread* these data back into a wide format data frame.
 
 ```{r spread}
-d.wide <- ...
 ```
 
 
@@ -97,51 +116,24 @@ Part 3: Manipulating the data using dplyr
 
 Try also using the dplyr `distinct` function to remove the duplicate participants from the raw csv file that you discovered in part 1.
 
-```{r}
+```{r remove dups}
 d.raw <- read.csv("../data/janiszewski_rep_exercise.csv")
-d.unique.subs <- ...
+d.unique.subs <- d.raw %>%
+    distinct(WorkerId)
 ```
 
 As we said in class, a good thing to do is always to check histograms of the response variable. Do that now, using either regular base graphics or ggplot. What can you conclude? 
 
-```{r}
+```{r histogram}
+qplot(data = d.tidy.final, response)
 ```
 
 OK, now we turn to the actual data anlysis. We'll be using dplyr verbs to `filter`, `group`,`mutate`, and `summarise` the data.
 
 Start by using `summarise` on `d.tidy` to compute the mean bet across all participants. Note that this is simply taking the grand mean. Ultimately, we would like to compute the mean for different conditions and items, but this will come later. Right now we're just learning the syntax of `summarise`.
 
-```{r}
-...
-```
-
-This is a great time to get comfortable with the `%>%` operator. In brief, `%>%` allows you to pipe data from one function to another. So if you would have written:
-
-```{r}
-d <- function(d, other_stuff)
-```
-  
-you can now write:
-
-```{r}
-d <- d %>% function(other_stufF)
-```
-
-That doesn't seem like much, but it's cool when you can replace:
-
-```{r}
-d <- function1(d, other_stuff)
-d <- function2(d, lots_of_other_stuff, more_stuff)
-d <- function3(d, yet_more_stuff)
-```
-
-with
-
-```{r}
-d <- d %>% 
-  function1(other_stuff) %>%
-  function2(lots_of_other_stuff, more_stuff) %>%
-  function3(yet_more_stuff)
+```{r grand mean}
+d.tidy.final %>% summarise(mean(response, na.rm=T))
 ```
 
 In other words, you get to make a clean list of the things you want to do and chain them together without a lot of intermediate assignments. 
@@ -149,7 +141,9 @@ In other words, you get to make a clean list of the things you want to do and ch
 Let's use that capacity to combine `summarise` with `group_by`, which allows us to break up our summary into groups. Try grouping by item and condition and taking means using `summarise`, chaining these two verbs with `%>%`.
 
 ```{r}
-...
+d.tidy.final %>%
+    group_by(item, condition) %>%
+    summarise(mean(response, na.rm=T))
 ```
 
 OK, it's looking like there are maybe some differences between conditions, but how are we going to plot these? They are fundamentally different magnitudes from one another. 
@@ -183,12 +177,13 @@ Now we can do the same thing as before but look at the relative difference betwe
 * By computing absolute value of percentage change in price, and 
 * By computing z-scores over items.
 
-To do the first, use the `mutate` verb to add a percent change column, then comute the same summary as before. 
+To do the first, use the `mutate` verb to add a percent change column, then compute the same summary as before. 
 
-```{r}
+```{r get pct change}
 pcts <- d.tidy %>%
-  mutate(pct_change = ... ) %>%
-  ...
+    mutate(pct_change = (anchor - cost) / anchor) %>%
+    group_by(item, condition) %>%
+    summarise(mean = mean(pct_change, na.rm=T))    
 ```
 
 To do the second, you will need to `group` first by item, compute z-scores with respect to items, then further group by condition.
@@ -197,14 +192,18 @@ HINT: `scale(x)` returns a complicated data structure that doesn't play nicely w
 
 HINT: by default, `group_by` undoes any previous groupings. If you want to add new grouping variables *on top* of pre-existing ones, specify `add = TRUE`, e.g., `d %>% group_by(var1) %>% group_by(var2, add = TRUE)`.
 
-```{r}
-z.scores <- d.tidy %>% ...
+```{r get z scores}
+z.scores <- d.tidy %>%
+    group_by(item) %>%
+    mutate(z = scale(cost)[,1]) %>%
+    group_by(condition, add = T) %>%
+    summarise(z = mean(z, na.rm = T))
 ```
 
 OK, now here comes the end: we're going to plot the differences and see if anything happened. First the percent change:
 
-```{r}
-qplot(item, pct, fill=condition,
+```{r pct change plot}
+qplot(item, mean, fill=condition,
       position="dodge",
       stat="identity", geom="bar",
       data=pcts)
@@ -212,7 +211,7 @@ qplot(item, pct, fill=condition,
 
 and the z-scores:
 
-```{r}
+```{r z-scores plot}
 qplot(item, z, fill=condition,
       position="dodge",
       stat="identity", geom="bar",
