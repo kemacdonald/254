@@ -1,6 +1,6 @@
 ---
 title: 'Psych 254 W15 PS #2'
-author: "Mike Frank"
+author: "Kyle MacDonald"
 date: "February 4, 2015"
 output: html_document
 ---
@@ -27,24 +27,27 @@ Now we're going to use qplot. qplot is the easy interface, meant to replace plot
 
 We're going to be using the diamonds dataset. This is a set of measurements of diamonds, along with their price etc.
 
-```{r}
+```{r explore data}
 head(diamonds)
 qplot(diamonds$carat, diamonds$price)
 ```
 
 Scatter plots are trivial, and easy to add features to. Modify this plot so that it uses the dataframe rather than working from variables in the general namespace (good to get away from retyping `diamonds$` every time you reference a variable). 
 
-```{r}
+```{r scatter df}
+qplot(carat, price, data=diamonds)
 ```
 
 Try adding clarity and cut, using shape and color as your visual variables. 
 
-```{r}
+```{r add clarity and cut}
+qplot(x=carat, y=price, shape=clarity, color=cut, data=diamonds)
 ```
 
 One of the primary benefits of `ggplot2` is the use of facets - also known as small multiples in the Tufte vocabulary. That last plot was probably hard to read. Facets could make it better. Try adding a `facets = x ~ y` argument. `x ~ y` means row facets are by x, column facets by y. 
 
-```{r}
+```{r facets}
+qplot(x=carat, y=price, shape=clarity, color=cut, facets = clarity ~ cut, data=diamonds)
 ```
 
 But facets can also get overwhelming. Try to strike a good balance between color, shape, and faceting.
