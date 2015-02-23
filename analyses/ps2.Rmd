@@ -19,7 +19,7 @@ I've adapted this for psych 254 purposes
 First install and load the package.
 
 ```{r}
-install.packages("ggplot2")
+#install.packages("ggplot2")
 library(ggplot2)
 ```
 
@@ -41,20 +41,21 @@ qplot(carat, price, data=diamonds)
 Try adding clarity and cut, using shape and color as your visual variables. 
 
 ```{r add clarity and cut}
-qplot(x=carat, y=price, shape=clarity, color=cut, data=diamonds)
+qplot(x=carat, y=price, shape=cut, color=clarity, data=diamonds)
 ```
 
 One of the primary benefits of `ggplot2` is the use of facets - also known as small multiples in the Tufte vocabulary. That last plot was probably hard to read. Facets could make it better. Try adding a `facets = x ~ y` argument. `x ~ y` means row facets are by x, column facets by y. 
 
-```{r facets}
-qplot(x=carat, y=price, shape=clarity, color=cut, facets = clarity ~ cut, data=diamonds)
+```{r facets, message=F}
+qplot(x=carat, y=price, facets = clarity ~ cut, data=diamonds)
 ```
 
 But facets can also get overwhelming. Try to strike a good balance between color, shape, and faceting.
 
 HINT: `facets = . ~ x` puts x on the columns, but `facets = ~ x` (no dot) *wraps* the facets. These are underlying calls to different functions, `facet_wrap` (no dot) and `facet_grid` (two arguments). 
 
-```{r}
+```{r viz vars and facets, message=F}
+qplot(x=carat, y=price, facets = clarity ~ cut, data=diamonds)
 ```
 
 The basic unit of a ggplot plot is a "geom" - a mapping between data (via an "aesthetic") and a particular geometric configuration on coordinate axes. 
@@ -62,16 +63,20 @@ The basic unit of a ggplot plot is a "geom" - a mapping between data (via an "ae
 Let's try some other geoms and manipulate their parameters. First, try a histogram (`geom="hist"`). 
 
 ```{r}
+qplot(x=carat, geom="histogram", data=diamonds)
 ```
 
 Now facet your histogram by clarity and cut. 
 
-```{r}
+```{r, message=F}
+qplot(x=carat, geom="histogram", facets = clarity ~ cut, data=diamonds)
 ```
 
 I like a slightly cleaner look to my plots. Luckily, ggplot allows you to add "themes" to your plots. Try doing the same plot but adding `+ theme_bw()` or `+ theme_classic()`. Different themes work better for different applications, in my experience. 
 
-```{r}
+```{r, message=F}
+qplot(x=carat, geom="histogram", facets = clarity ~ cut, data=diamonds) +
+    theme_bw()
 ```
 
 Part 1B: Exploring ggplot2 using ggplot
@@ -92,12 +97,18 @@ Try writing this as a single set of additions (e.g. one line of R code, though y
 
 
 ```{r}
+ggplot(diamonds, aes(x=carat, y=price, color=carat)) +
+    geom_point()
 ```
 
 
 You can also set the aesthetic separately for each geom, and make some great plots this way. Though this can get complicated. Try using `ggplot` to build a histogram of prices. 
 
-```{r}
+```{r, message=F}
+ggplot(diamonds, aes(x=price)) +
+    geom_histogram() +
+    facet_grid(clarity ~ cut) +
+    theme_bw()
 ```
 
 Part 2: Diving into real data: Sklar et al. (2012)
@@ -110,7 +121,9 @@ First let's set up a few preliminaries.
 ```{r}
 library(tidyr)
 library(dplyr)
+library(stats)
 
+theme_set(theme_bw())
 sem <- function(x) {sd(x) / sqrt(length(x))}
 ci95 <- function(x) {sem(x) * 1.96}
 ```
@@ -128,22 +141,31 @@ d.b <- read.csv("../data/sklar_expt6b_corrected.csv")
 
 Gather these datasets into long form and get rid of the Xs in the headers.
 
-```{r}
+```{r gather long form}
+d.a_tidy <- d.a %>%
+    gather(subid, rt, starts_with("X")) %>%
+    mutate(subid = as.integer(gsub("X", "", subid)))
+
+d.b_tidy <- d.b %>%
+    gather(subid, rt, starts_with("X")) %>%
+    mutate(subid = as.integer(gsub("X", "", subid)))
 ```
 
 Bind these together. Check out `bind_rows`.
 
-```{r}
+```{r bind together}
+d.a.b <- bind_rows(d.a_tidy, d.b_tidy)
 ```
 
 Merge these with subject info. You will need to look into merge and its relatives, `left_join` and `right_join`. Call this dataframe `d`, by convention. 
 
-```{r}
+```{r merge with sub info}
+d <- left_join(d.a.b, subinfo, by="subid")
 ```
 
 Clean up the factor structure.
 
-```{r}
+```{r clean up factor structure}
 d$presentation.time <- factor(d$presentation.time)
 levels(d$operand) <- c("addition","subtraction")
 ```
@@ -153,22 +175,58 @@ Data Analysis Preliminaries
 
 Examine the basic properties of the dataset. First, take a histogram.
 
-```{r}
+```{r histogram}
+qplot(rt, data=d)
 ```
 
 Challenge question: what is the sample rate of the input device they are using to gather RTs?
 
-```{r}
+```{r sample rate}
+rt_count <- d %>%
+    group_by(rt) %>%
+    summarise(count = n())
 ```
+
 
 Sklar et al. did two manipulation checks. Subjective - asking participants whether they saw the primes - and objective - asking them to report the parity of the primes (even or odd) to find out if they could actually read the primes when they tried. Examine both the unconscious and conscious manipulation checks (this information is stored in subinfo). What do you see? Are they related to one another?
 
-```{r} 
+```{r manipulation check} 
+# look at distributions 
+qplot(objective.test, facets = . ~ subjective.test, data=d) 
+
+# are the two manipulations checks related
+qplot(x=objective.test, y=subjective.test, data=d) + 
+    stat_smooth(method="glm", family="binomial") 
+
+# model
+m1 <- glm(subjective.test ~ objective.test, 
+          family="binomial",data=d)
+summary(m1)
 ```
+
+Based on the plot and model, it looks like performance on the two manipulation checks are related: when you score higher on the objective test, you are more likely to respond "yes" on the subjective manipulation check.
 
 OK, let's turn back to the measure and implement Sklar et al.'s exclusion criterion. You need to have said you couldn't see (subjective test) and also be not significantly above chance on the objective test (< .6 correct). Call your new data frame `ds`.
 
-```{r}
+```{r data filter}
+ds <- d %>%
+    filter(subjective.test == 0, 
+           objective.test < .6)
+
+# get numbers of subjects filtered
+n_filt <- d %>%
+    group_by(presentation.time) %>%
+    summarise(unfiltered_n = n_distinct(subid))
+
+n_filt <- ds %>%
+    group_by(presentation.time) %>%
+    summarise(filtered_n = n_distinct(subid)) %>%
+    select(filtered_n) %>%
+    bind_cols(n_filt) %>%
+    mutate(n_subs_removed = unfiltered_n - filtered_n) %>%
+    select(presentation.time, unfiltered_n, n_subs_removed) 
+
+n_filt
 ```
 
 Sklar et al.'s analysis
@@ -178,19 +236,58 @@ Sklar et al. show a plot of a "facilitation effect" - the time to respond to inc
 
 HINT: first take averages within subjects, then compute your error bars across participants, using the `sem` function (defined above). 
 
-```{r}
+```{r avg within and SEs}
+ms <- ds %>%
+    group_by(subid, congruent, presentation.time, operand) %>%
+    summarise(mean_rt = mean(rt, na.rm=T)) %>%
+    spread(congruent, mean_rt) %>%
+    mutate(mean_diff = no - yes) %>% 
+    select(-no, -yes) %>%
+    group_by(operand, presentation.time) %>%
+    summarise(mean = mean(mean_diff),
+              sem = sem(mean_diff))
 ```
 
 Now plot this summary, giving more or less the bar plot that Sklar et al. gave (though I would keep operation as a variable here. Make sure you get some error bars on there (e.g. `geom_errorbar` or `geom_linerange`). 
 
-```{r}
+```{r plot summary}
+qplot(x=presentation.time, y=mean, geom="bar", stat="identity", width = 0.5, data=ms) +
+    geom_linerange(aes(ymax = mean + sem, ymin = mean - sem), width=0.2) +
+    facet_grid( ~ operand) 
 ```
 
 What do you see here? How close is it to what Sklar et al. report? Do the error bars match? How do you interpret these data? 
 
 Challenge problem: verify Sklar et al.'s claim about the relationship between RT and the objective manipulation check.
 
-```{r}
+```{r rt and objective manipulation check}
+ss <- ds %>%
+    group_by(subid, congruent, presentation.time, operand, 
+             objective.test) %>%
+    summarise(mean_rt = mean(rt, na.rm=T)) %>%
+    spread(congruent, mean_rt) %>%
+    mutate(mean_diff = no - yes) %>% 
+    select(-no, -yes)
+    
+qplot(x=objective.test, y=mean_diff, 
+      facets = presentation.time ~ operand, data=ss) +
+    geom_smooth(method="lm", se=F)
+```
+
+Try looking at the relationship between objective test scores and faciliation scores in the full dataset. 
+
+```{r full dataset}
+ss_full <- d %>%
+    group_by(subid, congruent, presentation.time, operand, 
+             objective.test) %>%
+    summarise(mean_rt = mean(rt, na.rm=T)) %>%
+    spread(congruent, mean_rt) %>%
+    mutate(mean_diff = no - yes) %>% 
+    select(-no, -yes)
+    
+qplot(x=objective.test, y=mean_diff, 
+      facets = presentation.time ~ operand, data=ss_full) +
+    geom_smooth(method="lm", se=F)
 ```
 
 Your own analysis
