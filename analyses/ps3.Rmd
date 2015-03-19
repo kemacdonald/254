@@ -10,6 +10,7 @@ This is problem set #3, in which we want you to integrate your knowledge of data
 ```{r}
 library(dplyr)
 library(ggplot2)
+theme_set(theme_bw())
 ```
 
 Part 1: Basic simulation and NHST
@@ -69,6 +70,7 @@ and vitamin C. This is super simple. (Try `?ToothGrowth`).
 First plot the data, we'll use `qplot` to understand how `len` (tooth length) depends on `dose` (amount of Vitamin C) and `supp` (delivery method).
 
 ```{r}
+qplot(dose, len, facets = ~ supp, data=ToothGrowth)
 ```
 
 So now you see what's going on. 
@@ -76,16 +78,24 @@ So now you see what's going on.
 Next, always make a histogram of the DV before making a linear model! This reveals the distribution and can be helpful in choosing your model type.
 
 ```{r}
+qplot(len, data=ToothGrowth)
 ```
 
 Now make a linear model of tooth lengths using `lm`. Try making one with main effects and interactions and another with just main  effects. Make sure to assign them to variables so that you can get them later.
 
 ```{r}
+m1 <- lm(len ~ dose + supp, data=ToothGrowth)
+summary(m1)
+
+m1.int <- lm(len ~ dose * supp, data=ToothGrowth)
+summary(m1.int)
 ```
 
 Now try taking out the intercept, using a -1 term in the formula. what does this do?
 
 ```{r}
+m1.no.int <- lm(len ~ dose * supp - 1, data=ToothGrowth)
+summary(m1.no.int)
 ```
 
 Thought question: Take a moment to interpret the coefficients of the model. 
