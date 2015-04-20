@@ -8,6 +8,7 @@ output: html_document
 This is problem set #3, in which we want you to integrate your knowledge of data wrangling with some basic simulation skills and some linear modeling.
 
 ```{r}
+rm(list=ls())
 library(dplyr)
 library(ggplot2)
 theme_set(theme_bw())
@@ -21,11 +22,32 @@ Let's start by convincing ourselves that t-tests have the appropriate false posi
 First do this using a `for` loop.
 
 ```{r}
+p.vals <- array()
+n.sims <- 10000
+
+for(i in 1:n.sims) {
+    ## get data
+    s1 <- rnorm(30)
+    s2 <- rnorm(30)
+    ## do t-test
+    t <- t.test(s1, s2)
+    ## compile t-vals
+    p.vals[i] <- as.numeric(t[3])
+    ## get t.vals < .05 
+    sig.p <- p.vals[p.vals <= .05]  
+}
+
+fp.rate <- length(sig.p) / n.sims 
+fp.rate
 ```
 
 Next, do this using the `replicate` function:
 
 ```{r}
+rep.p.vals <- replicate(n.sims, as.numeric(t.test(rnorm(30, rnorm(30)))[3]))
+rep.sig.p <- rep.p.vals[rep.p.vals <= .05]
+fp.rate <- length(rep.sig.p) / n.sims 
+fp.rate
 ```
 
 Ok, that was a bit boring. Let's try something moderately more interesting - let's implement a p-value sniffing simulation, in the style of Simons, Nelson, & Simonsohn (2011).
@@ -35,13 +57,30 @@ Consider this scenario: you have done an experiment, again with 30 participants 
 First, write a function that implements this sampling regime.
 
 ```{r}
+## returns vector of significant p.va
 double.sample <- function () {
+    ## collect some data
+    s.t1 <- rnorm(30)
+    ## get p.val
+    p.val <- t.test(s.t1)$p.val
+    ## check p.val
+    if(p.val < .25 & p.val > .05) {
+        ## double the sample
+        s.t2 <- c(s.t1, rnorm(30))
+        ## check p.val again
+        p.val <- t.test(s.t2)$p.value
+    } 
+  return(p.val)
 }
 ```
 
 Now call this function 10k times and find out what happens. 
 
 ```{r}
+dbl.p.vals <- replicate(10000, double.sample())
+sig.dbl.p.vals <- dbl.p.vals[dbl.p.vals <= .05]
+fp.rate.2 <- length(sig.dbl.p.vals) / length(dbl.p.vals) 
+fp.rate.2
 ```
 
 Is there an inflation of false positives? How bad is it?
@@ -53,10 +92,36 @@ HINT: Try to do this by making the function `double.sample` take the upper p val
 HINT 2: You may need more samples. Find out by looking at how the results change from run to run.
 
 ```{r}
+double.sample.2 <- function (upper.p.val) {
+    ## collect some data
+    s.t1 <- rnorm(30)
+    ## get p.val
+    p.val <- t.test(s.t1)$p.val
+    ## check p.val
+    if(p.val < upper.p.val & p.val > .05) {
+        ## double the sample
+        s.t2 <- c(s.t1, rnorm(30))
+        ## check p.val again
+        p.val <- t.test(s.t2)$p.value
+    } 
+  return(p.val)
+}
+
+## sim values
+upper.p <- .75
+
+## run sim
+dbl.75.p.vals <- replicate(10000, double.sample.2(upper.p))
+dbl.75.sig.p <- dbl.75.p.vals[dbl.75.p.vals <= .05]
+
+## get fp rate
+dbl.75.fp.rate <- length(dbl.75.sig.p) / length(dbl.75.p.vals)
+dbl.75.fp.rate
 ```
 
 What do you conclude on the basis of this simulation? How bad is this kind of data-dependent policy?
 
+This sampling policy results in a doubling of your false positive rates in some simulations. 
 
 Part 2: The Linear Model
 ========================
@@ -87,21 +152,30 @@ Now make a linear model of tooth lengths using `lm`. Try making one with main ef
 m1 <- lm(len ~ dose + supp, data=ToothGrowth)
 summary(m1)
 
-m1.int <- lm(len ~ dose * supp, data=ToothGrowth)
-summary(m1.int)
+m2 <- lm(len ~ dose * supp, data=ToothGrowth)
+summary(m2)
 ```
 
 Now try taking out the intercept, using a -1 term in the formula. what does this do?
 
 ```{r}
-m1.no.int <- lm(len ~ dose * supp - 1, data=ToothGrowth)
-summary(m1.no.int)
+m3 <- lm(len ~ dose * supp - 1, data=ToothGrowth)
+summary(m3)
 ```
 
 Thought question: Take a moment to interpret the coefficients of the model. 
 Q1 - What are the units?
+* Tooth length
+
 Q2 - How does the interaction relate to the plot?
+* From the plot you can see that the size of the dose has a different effect depending
+on the delivery method. That is, lower doses of Vitamin C have a larger effect on tooth 
+length if administered with OJ. Larger doses of Vitaminc C appear to have the same effect
+on tooth length.
+
 Q3 - Should there be an interaction in the model? What does it mean? How important is it?
+* Yes, an interaction term is important in this model since it has a reasonable 
+interpretation: that the effect of dose depends on the different delivery methods such that lower doses are not as effective with the VC delivery.
 
 Now make predictions from the model you like the best. What should happen with
 doses of 0, 1.5, 2.5, and 10 under both supplements? 
@@ -111,20 +185,32 @@ HINT: use the `predict` function ...
 HINT 2: you will have to make a dataframe to do the prediction with, so use something like `data.frame(dose=...)`.
 
 ```{r}
+dose.df <- data.frame(dose=c(0, 1.5, 2.5, 10), supp="VC")
+dose.df <- rbind(dose.df, data.frame(dose=c(0, 1.5, 2.5, 10), supp="OJ"))
+preds.df <- cbind(dose.df, m.pred = predict(m3, dose.df))
+```
+
+Plot the model predictions
+
+```{r}
+qplot(dose, m.pred, facets=(~supp), data=preds.df) + 
+    geom_line()
 ```
 
 Now plot the residuals from the original model. How do they look?
 HINT: `?resid`
 
 ```{r}
+## look up best way to plot residuals of lm
+qplot(resid(m3))
 ```
-
 
 BONUS: test them for normality of distribution using a quantile-quantile plot.
 
 HINT: `?qqplot` and `?qqnorm`
 
 ```{r}
+qqplot()
 ```
 
 
@@ -137,7 +223,37 @@ Try to figure out what the most reasonable linear model of the data is.
 
 ```{r}
 d <- read.csv("../data/FVS2011-hands.csv")
+```
 
+Histogram of the DV
+
+```{r}
+qplot(hand.look, data=d)
+```
+
+Looking time data is not normally distributed. Lower limit = 0. Looks more like a Poisson distrubtion? 
+
+Now plot the data by condition 
+
+```{r}
+qplot(condition, hand.look, facets data=d, geom="boxplot")
+```
+
+Now plot the relationship between looking to hands and age by condition.
+
+```{r}
+qplot(age, hand.look, facets=(~condition), data=d) + geom_smooth(method="lm")
+```
+
+Model looking to hand as a function of condition.
+
+```{r}
+m1.hands <- lm(hand.look ~ condition, data=d)
+summary(m1.hands)
+
+## add interaction term (age by condition) to the model
+m2.hands <- lm(hand.look ~ condition * age - 1, data=d)
+summary(m2.hands)
 ```
 
 Plot that model on the same plot as the data.
@@ -145,6 +261,9 @@ Plot that model on the same plot as the data.
 HINT: you can do this either using `predict` or (if you are feeling confident of your understanding of the models) using the built-in linear models in `ggplot`'s `geom_smooth`. 
 
 ```{r}
+qplot(condition, hand.look, color = age, group = 1, data=d) +
+    scale_color_gradient() +
+    geom_smooth(method="lm")
 ```
 
 What do you conclude from this pattern of data?
@@ -165,6 +284,7 @@ d$age.group <- factor(d$age.group)
 Always begin with a histogram!
 
 ```{r}
+qplot(correct, facets=(~age.group), data=d)
 ```
 
 Brief Confidence Interval Digression
